@@ -1,0 +1,55 @@
+import time
+import dbus
+from gi.repository import GObject
+
+# Define LED device path
+led_path = "/sys/class/leds/white:flash/brightness"
+
+# Connect to the D-Bus system bus
+bus = dbus.SystemBus()
+
+# Get KDE Connect SMS object
+device_id = "INCY92700942"
+messages_obj = bus.get_object("org.kde.kdeconnect", f"/modules/kdeconnect/devices/{device_id}/sms")
+messages_iface = dbus.Interface(messages_obj, "org.kde.kdeconnect.device.sms")
+
+# Define notification conditions
+missed_call = False
+new_sms = False
+low_battery = False
+
+# Check for missed call
+call_obj = bus.get_object("org.ofono", "/org/ofono/voicecall")
+call_iface = dbus.Interface(call_obj, "org.ofono.VoiceCallManager")
+calls = call_iface.GetCalls()
+for call_path in calls:
+    call = bus.get_object("org.ofono", call_path)
+    if call.Get("State") == "incoming":
+        missed_call = True
+        break
+
+# Check for new SMS
+sms_list = messages_iface.getConversations()
+for sms in sms_list:
+    if sms["isNew"]:
+        new_sms = True
+        break
+
+# Check battery level
+battery_obj = bus.get_object("org.freedesktop.UPower", "/org/freedesktop/UPower/devices/battery_battery")
+battery_iface = dbus.Interface(battery_obj, "org.freedesktop.DBus.Properties")
+battery_percentage = battery_iface.Get("org.freedesktop.UPower.Device", "Percentage")
+if battery_percentage < 20:
+    low_battery = True
+
+# Set LED state based on notification conditions
+if missed_call or new_sms or low_battery:
+    with open(led_path, "w") as f:
+        f.write("1\n")
+else:
+    with open(led_path, "w") as f:
+        f.write("0\n")
+
+# Exit script after 10 seconds
+time.sleep(10)
+GObject.MainLoop().quit()
